@@ -2,6 +2,9 @@ import numpy as np
 import argparse
 import pandas as pd
 
+# seed = 2020
+np.random.seed(2020)
+
 def split_by_all_user(df, train_frac=0.8, random_state=None):
     """
     Splits data into training and test sets by selecting 80% of users for training

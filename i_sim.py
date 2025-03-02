@@ -80,7 +80,7 @@ def jaccard_sim(matrix, top_k=20, self_loop=False, verbose=-1):
     
     return filtered_similarity_matrix.tocsr() #, csr_matrix(full_similarity_matrix)
 
-def cosine_sim(matrix, top_k=20, self_loop=False, verbose=-1):
+def cosine_sim_old(matrix, top_k=20, self_loop=False, verbose=-1):
     
     if verbose > 0:
         print('Computing cosine similarity by top-k...')
@@ -307,7 +307,7 @@ def cosine_sim_exp(matrix, top_k=20, self_loop=False, verbose=-1):
     
     return filtered_similarity_matrix.tocsr()
 
-def cosine_sim_new(matrix, binary_matrix=None, alpha=0.5, top_k=20, self_loop=False, verbose=-1):
+def cosine_sim(matrix, binary_matrix=None, alpha=0.5, top_k=20, self_loop=False, verbose=-1):
     """
     Computes a weighted combination of binary and temporal similarity matrices.
     
