@@ -477,6 +477,8 @@ def cosine_sim(matrix, binary_matrix=None, alpha=0.5, decay_rate=0.01, top_k=20,
     if verbose > 0:
         print('Computing weighted combination of binary and temporal similarities...')
     
+    decay_rate = config["t_decay"]
+    
     # Convert the original matrix to a sparse matrix (preserving timestamps)
     sparse_matrix = csr_matrix(matrix)
     

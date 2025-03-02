@@ -39,5 +39,7 @@ def parse_args():
     parser.add_argument('--save_sim_mat', type=bool, default=False)
     parser.add_argument('--margin', type=float, default=0.0, help="the margin in BPR loss")
     parser.add_argument('--time', type=bool, default=False, help="whether to use time information")
+    parser.add_argument('--t_decay', type=float, default=0.01)
+    
     
     return parser.parse_args()

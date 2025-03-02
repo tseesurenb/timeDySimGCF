@@ -40,3 +40,4 @@ config['margin'] = args.margin
 config['load'] = args.load
 config['time'] = args.time
 config['alpha'] = args.alpha
+config['t_decay'] = args.t_decay
