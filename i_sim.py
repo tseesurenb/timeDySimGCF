@@ -307,7 +307,7 @@ def cosine_sim_exp(matrix, top_k=20, self_loop=False, verbose=-1):
     
     return filtered_similarity_matrix.tocsr()
 
-def cosine_sim(matrix, binary_matrix=None, alpha=0.5, top_k=20, self_loop=False, verbose=-1):
+def cosine_sim_2(matrix, binary_matrix=None, alpha=0.5, top_k=20, self_loop=False, verbose=-1):
     """
     Computes a weighted combination of binary and temporal similarity matrices.
     
@@ -410,6 +410,140 @@ def cosine_sim(matrix, binary_matrix=None, alpha=0.5, top_k=20, self_loop=False,
     if verbose > 0:
         print('Filtering top-k values...')
     
+    pbar = tqdm(range(combined_sim.shape[0]), bar_format='{desc}{bar:30} {percentage:3.0f}% | {elapsed}{postfix}', ascii="░❯")
+    pbar.set_description(f"Preparing combined similarity matrix | Top-K: {top_k}")
+    
+    for i in pbar:
+        # Get the non-zero elements in the i-th row
+        row = combined_sim.getrow(i).tocoo()
+        if row.nnz == 0:
+            continue
+        
+        # Extract indices and values of the row
+        row_data = row.data
+        row_indices = row.col
+        
+        # Sort indices based on similarity values (in descending order) and select top K
+        if row.nnz > top_k:
+            top_k_idx = np.argsort(-row_data)[:top_k]
+        else:
+            top_k_idx = np.argsort(-row_data)
+        
+        # Store the top K similarities
+        filtered_data.extend(row_data[top_k_idx])
+        filtered_rows.extend([i] * len(top_k_idx))
+        filtered_cols.extend(row_indices[top_k_idx])
+    
+    # Construct the final filtered sparse matrix
+    filtered_similarity_matrix = coo_matrix((filtered_data, (filtered_rows, filtered_cols)), shape=combined_sim.shape)
+    
+    # Clean up to free memory
+    del sparse_matrix, binary_matrix, normalized_matrix
+    del binary_sim, temporal_sim, combined_sim
+    del filtered_data, filtered_rows, filtered_cols
+    
+    return filtered_similarity_matrix.tocsr()
+
+
+def cosine_sim(matrix, binary_matrix=None, alpha=0.5, decay_rate=0.1, top_k=20, self_loop=False, verbose=-1):
+    """
+    Computes a weighted combination of binary and temporal similarity matrices with time decay.
+    
+    Parameters:
+    -----------
+    matrix : scipy.sparse.csr_matrix or numpy.ndarray
+        Matrix with timestamps as values, where rows are users and columns are items.
+    binary_matrix : scipy.sparse.csr_matrix or numpy.ndarray, optional
+        Binary interaction matrix. If None, a binary version will be created from the timestamp matrix.
+    alpha : float, default=0.5
+        Weight parameter for combining similarities. 
+        final_sim = alpha * binary_sim + (1-alpha) * temporal_sim
+    decay_rate : float, default=0.1
+        Controls how quickly the importance of older interactions decays.
+        Higher values mean faster decay.
+    top_k : int, default=20
+        Number of most similar items to keep for each item.
+    self_loop : bool, default=False
+        Whether to include self-similarity.
+    verbose : int, default=-1
+        Verbosity level. Use 0 or higher for more verbose output.
+        
+    Returns:
+    --------
+    scipy.sparse.csr_matrix
+        Combined similarity matrix with only top_k values per row.
+    """
+    
+    if verbose > 0:
+        print('Computing weighted combination of binary and temporal similarities...')
+    
+    # Convert the original matrix to a sparse matrix (preserving timestamps)
+    sparse_matrix = csr_matrix(matrix)
+    
+    # Create binary matrix if not provided
+    if binary_matrix is None:
+        if verbose > 0:
+            print('Creating binary matrix from timestamp matrix...')
+        # Create a copy of the matrix with binary values (1 where timestamp exists)
+        binary_matrix = sparse_matrix.copy()
+        binary_matrix.data = np.ones_like(binary_matrix.data)
+    else:
+        binary_matrix = csr_matrix(binary_matrix)
+    
+    # --- Step 1: Compute binary similarity ---
+    if verbose > 0:
+        print('Computing binary cosine similarity...')
+    binary_sim = cosine_similarity(binary_matrix, dense_output=False)
+    
+    # --- Step 2: Compute temporal similarity with time decay ---
+    # Create a user-wise normalized version of the timestamps using time decay
+    normalized_matrix = sparse_matrix.copy()
+    
+    if verbose > 0:
+        print('Applying time decay to timestamps...')
+    
+    # Find the maximum timestamp in the dataset to use as reference
+    max_timestamp = np.max(sparse_matrix.data)
+    
+    # Apply time decay: weight = exp(-decay_rate * (max_time - interaction_time))
+    # This gives higher weights to more recent interactions
+    time_diff = max_timestamp - sparse_matrix.data
+    decay_weights = np.exp(-decay_rate * time_diff)
+    
+    # Update the normalized matrix with decay weights
+    normalized_matrix.data = decay_weights
+    
+    if verbose > 0:
+        print('Computing temporal cosine similarity...')
+    
+    # Compute sparse cosine similarity with time weights
+    temporal_sim = cosine_similarity(normalized_matrix, dense_output=False)
+    
+    # --- Step 3: Combine the two similarity matrices ---
+    # Use alpha from parameters, not from config
+    if verbose > 0:
+        print(f'Combining similarities with alpha={alpha}...')
+    
+    # We'll combine them directly using their sparse representations
+    # alpha * binary_sim + (1-alpha) * temporal_sim
+    alpha = config["alpha"]
+    combined_sim = binary_sim.multiply(alpha) + temporal_sim.multiply(1-alpha)
+    
+    # If self_loop is False, set the diagonal to zero
+    if self_loop:
+        combined_sim.setdiag(1)
+    else:
+        combined_sim.setdiag(0)
+    
+    # --- Step 4: Filter to top K values ---
+    filtered_data = []
+    filtered_rows = []
+    filtered_cols = []
+    
+    if verbose > 0:
+        print('Filtering top-k values...')
+    
+    from tqdm import tqdm
     pbar = tqdm(range(combined_sim.shape[0]), bar_format='{desc}{bar:30} {percentage:3.0f}% | {elapsed}{postfix}', ascii="░❯")
     pbar.set_description(f"Preparing combined similarity matrix | Top-K: {top_k}")
     
