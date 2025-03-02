@@ -445,7 +445,7 @@ def cosine_sim_2(matrix, binary_matrix=None, alpha=0.5, top_k=20, self_loop=Fals
     return filtered_similarity_matrix.tocsr()
 
 
-def cosine_sim(matrix, binary_matrix=None, alpha=0.5, decay_rate=0.01, top_k=20, self_loop=False, verbose=-1):
+def cosine_sim_3(matrix, binary_matrix=None, alpha=0.5, decay_rate=0.01, top_k=20, self_loop=False, verbose=-1):
     """
     Computes a weighted combination of binary and temporal similarity matrices with time decay.
     
@@ -577,5 +577,203 @@ def cosine_sim(matrix, binary_matrix=None, alpha=0.5, decay_rate=0.01, top_k=20,
     del sparse_matrix, binary_matrix, normalized_matrix
     del binary_sim, temporal_sim, combined_sim
     del filtered_data, filtered_rows, filtered_cols
+    
+    return filtered_similarity_matrix.tocsr()
+
+
+def cosine_sim(matrix, binary_matrix=None, alpha=0.5, decay_mode='both', decay_rate=0.01, beta=1.0, top_k=20, self_loop=False, verbose=-1):
+    """
+    Computes a weighted combination of binary and temporal similarity matrices with time decay.
+    
+    Parameters:
+    -----------
+    matrix : scipy.sparse.csr_matrix or numpy.ndarray
+        Matrix with timestamps as values, where rows are users and columns are items.
+    binary_matrix : scipy.sparse.csr_matrix or numpy.ndarray, optional
+        Binary interaction matrix. If None, a binary version will be created from the timestamp matrix.
+    alpha : float, default=0.5
+        Weight parameter for combining similarities. 
+        final_sim = alpha * binary_sim + (1-alpha) * temporal_sim
+    decay_mode : str, default='global'
+        Mode for time decay calculation:
+        - 'global': Uses global reference (absolute decay from earliest timestamp)
+        - 'user': Uses user-specific reference (relative decay from each user's first interaction)
+        - 'both': Combines both global and user-specific decay
+    decay_rate : float, default=0.1
+        Controls how quickly the importance of older interactions decays.
+        Higher values mean faster decay.
+    beta : float, default=1.0
+        Scaling factor for time distance when using 'both' decay_mode.
+        Controls the balance between global and user-specific decay.
+    top_k : int, default=20
+        Number of most similar items to keep for each item.
+    self_loop : bool, default=False
+        Whether to include self-similarity.
+    verbose : int, default=-1
+        Verbosity level. Use 0 or higher for more verbose output.
+        
+    Returns:
+    --------
+    scipy.sparse.csr_matrix
+        Combined similarity matrix with only top_k values per row.
+    """
+    import numpy as np
+    from scipy.sparse import csr_matrix, coo_matrix
+    from sklearn.metrics.pairwise import cosine_similarity
+    from tqdm import tqdm
+    
+    if verbose > 0:
+        print('Computing weighted combination of binary and temporal similarities...')
+    
+    # Convert the original matrix to a sparse matrix (preserving timestamps)
+    sparse_matrix = csr_matrix(matrix)
+    
+    # Create binary matrix if not provided
+    if binary_matrix is None:
+        if verbose > 0:
+            print('Creating binary matrix from timestamp matrix...')
+        # Create a copy of the matrix with binary values (1 where timestamp exists)
+        binary_matrix = sparse_matrix.copy()
+        binary_matrix.data = np.ones_like(binary_matrix.data)
+    else:
+        binary_matrix = csr_matrix(binary_matrix)
+    
+    # --- Step 1: Compute binary similarity ---
+    if verbose > 0:
+        print('Computing binary cosine similarity...')
+    binary_sim = cosine_similarity(binary_matrix, dense_output=False)
+    
+    # --- Step 2: Compute temporal similarity with time decay ---
+    # Create a decay-weighted version of the timestamps
+    time_weighted_matrix = sparse_matrix.copy()
+    
+    # Time window unit (24 hours in seconds) for scaling
+    _win_unit = 24 * 3600
+    
+    if decay_mode == 'global' or decay_mode == 'both':
+        if verbose > 0:
+            print('Applying global (absolute) time decay...')
+        
+        # Global minimum timestamp (earliest interaction)
+        _start = np.min(sparse_matrix.data)
+        
+        # Calculate absolute decay: (timestamp - earliest) / day_in_seconds
+        abs_decay = (sparse_matrix.data - _start) / _win_unit
+        
+        # Apply exponential decay to absolute time differences
+        global_weights = np.exp(decay_rate * abs_decay)
+        
+        if decay_mode == 'global':
+            time_weighted_matrix.data = global_weights
+    
+    if decay_mode == 'user' or decay_mode == 'both':
+        if verbose > 0:
+            print('Applying user-specific (relative) time decay...')
+        
+        # Create a user-specific time-weighted matrix
+        user_time_weighted_matrix = sparse_matrix.copy()
+        user_weights = np.zeros_like(sparse_matrix.data)
+        
+        # Process each user (row) to calculate user-specific decay
+        for i in range(sparse_matrix.shape[0]):
+            # Get the row for user i
+            user_row = sparse_matrix.getrow(i)
+            
+            if user_row.nnz == 0:  # Skip if user has no interactions
+                continue
+            
+            # Extract timestamps for this user
+            user_timestamps = user_row.data
+            
+            # Calculate the user's earliest timestamp
+            user_start = np.min(user_timestamps)
+            
+            # Calculate relative decay: (timestamp - user_earliest) / day_in_seconds
+            user_rel_decay = (user_timestamps - user_start) / _win_unit
+            
+            # Apply exponential decay to user-relative time differences
+            user_row_weights = np.exp(decay_rate * user_rel_decay)
+            
+            # Update the weights for this user
+            user_weights[sparse_matrix.indptr[i]:sparse_matrix.indptr[i+1]] = user_row_weights
+        
+        if decay_mode == 'user':
+            time_weighted_matrix.data = user_weights
+    
+    # If using both decay types, combine them with beta as scaling factor
+    if decay_mode == 'both':
+        if verbose > 0:
+            print(f'Combining global and user-specific decay with beta={beta}...')
+        
+        # Combined decay = global_decay + beta * user_decay
+        combined_weights = global_weights + beta * user_weights
+        time_weighted_matrix.data = combined_weights
+    
+    if verbose > 0:
+        print('Computing temporal cosine similarity...')
+    
+    # Compute sparse cosine similarity with time weights
+    temporal_sim = cosine_similarity(time_weighted_matrix, dense_output=False)
+    
+    # --- Step 3: Combine the two similarity matrices ---
+    if verbose > 0:
+        print(f'Combining similarities with alpha={alpha}...')
+    
+    # Combine using sparse matrix operations: alpha * binary_sim + (1-alpha) * temporal_sim
+    combined_sim = binary_sim.multiply(alpha) + temporal_sim.multiply(1-alpha)
+    
+    # If self_loop is False, set the diagonal to zero
+    if self_loop:
+        combined_sim.setdiag(1)
+    else:
+        combined_sim.setdiag(0)
+    
+    # --- Step 4: Filter to top K values ---
+    filtered_data = []
+    filtered_rows = []
+    filtered_cols = []
+    
+    if verbose > 0:
+        print('Filtering top-k values...')
+    
+    pbar = tqdm(range(combined_sim.shape[0]), bar_format='{desc}{bar:30} {percentage:3.0f}% | {elapsed}{postfix}', ascii="░❯")
+    pbar.set_description(f"Preparing combined similarity matrix | Top-K: {top_k}")
+    
+    for i in pbar:
+        # Get the non-zero elements in the i-th row
+        row = combined_sim.getrow(i).tocoo()
+        if row.nnz == 0:
+            continue
+        
+        # Extract indices and values of the row
+        row_data = row.data
+        row_indices = row.col
+        
+        # Sort indices based on similarity values (in descending order) and select top K
+        if row.nnz > top_k:
+            top_k_idx = np.argsort(-row_data)[:top_k]
+        else:
+            top_k_idx = np.argsort(-row_data)
+        
+        # Store the top K similarities
+        filtered_data.extend(row_data[top_k_idx])
+        filtered_rows.extend([i] * len(top_k_idx))
+        filtered_cols.extend(row_indices[top_k_idx])
+    
+    # Construct the final filtered sparse matrix
+    filtered_similarity_matrix = coo_matrix((filtered_data, (filtered_rows, filtered_cols)), shape=combined_sim.shape)
+    
+    # Clean up to free memory
+    del sparse_matrix, binary_matrix, time_weighted_matrix
+    del binary_sim, temporal_sim, combined_sim
+    del filtered_data, filtered_rows, filtered_cols
+    
+    if decay_mode == 'user' or decay_mode == 'both':
+        del user_weights
+        if 'user_time_weighted_matrix' in locals():
+            del user_time_weighted_matrix
+    
+    if decay_mode == 'global' or decay_mode == 'both':
+        del global_weights
     
     return filtered_similarity_matrix.tocsr()
