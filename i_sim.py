@@ -387,13 +387,13 @@ def cosine_sim(matrix, binary_matrix=None, alpha=0.5, top_k=20, self_loop=False,
     # Compute sparse cosine similarity with time weights
     temporal_sim = cosine_similarity(normalized_matrix, dense_output=False)
     
-    # --- Step 3: Combine the two similarity matrices ---
+    alpha = config["alpha"]
+     # --- Step 3: Combine the two similarity matrices ---
     if verbose > 0:
         print(f'Combining similarities with alpha={alpha}...')
     
     # We'll combine them directly using their sparse representations
     # alpha * binary_sim + (1-alpha) * temporal_sim
-    alpha = config["alpha"]
     combined_sim = binary_sim.multiply(alpha) + temporal_sim.multiply(1-alpha)
     
     # If self_sim is False, set the diagonal to zero
