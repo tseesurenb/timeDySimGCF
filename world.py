@@ -39,3 +39,4 @@ config['save_model'] = args.save_model
 config['margin'] = args.margin
 config['load'] = args.load
 config['time'] = args.time
+config['alpha'] = args.alpha

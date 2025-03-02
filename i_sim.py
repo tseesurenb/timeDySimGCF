@@ -8,6 +8,7 @@ from scipy.sparse import coo_matrix
 from sklearn.metrics.pairwise import cosine_similarity
 from tqdm import tqdm
 from scipy.sparse import csr_matrix
+from world import config
 
 # ANSI escape codes for bold and red
 br = "\033[1;31m"
@@ -392,6 +393,7 @@ def cosine_sim(matrix, binary_matrix=None, alpha=0.5, top_k=20, self_loop=False,
     
     # We'll combine them directly using their sparse representations
     # alpha * binary_sim + (1-alpha) * temporal_sim
+    alpha = config["alpha"]
     combined_sim = binary_sim.multiply(alpha) + temporal_sim.multiply(1-alpha)
     
     # If self_sim is False, set the diagonal to zero
