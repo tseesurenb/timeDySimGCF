@@ -445,7 +445,7 @@ def cosine_sim_2(matrix, binary_matrix=None, alpha=0.5, top_k=20, self_loop=Fals
     return filtered_similarity_matrix.tocsr()
 
 
-def cosine_sim(matrix, binary_matrix=None, alpha=0.5, decay_rate=0.1, top_k=20, self_loop=False, verbose=-1):
+def cosine_sim(matrix, binary_matrix=None, alpha=0.5, decay_rate=0.01, top_k=20, self_loop=False, verbose=-1):
     """
     Computes a weighted combination of binary and temporal similarity matrices with time decay.
     
