@@ -617,10 +617,10 @@ def cosine_sim(matrix, binary_matrix=None, alpha=0.5, decay_mode='both', decay_r
     scipy.sparse.csr_matrix
         Combined similarity matrix with only top_k values per row.
     """
-    import numpy as np
-    from scipy.sparse import csr_matrix, coo_matrix
-    from sklearn.metrics.pairwise import cosine_similarity
-    from tqdm import tqdm
+    # import numpy as np
+    # from scipy.sparse import csr_matrix, coo_matrix
+    # from sklearn.metrics.pairwise import cosine_similarity
+    # from tqdm import tqdm
     
     if verbose > 0:
         print('Computing weighted combination of binary and temporal similarities...')
@@ -718,6 +718,8 @@ def cosine_sim(matrix, binary_matrix=None, alpha=0.5, decay_mode='both', decay_r
     # --- Step 3: Combine the two similarity matrices ---
     if verbose > 0:
         print(f'Combining similarities with alpha={alpha}...')
+    
+    alpha = config["alpha"]
     
     # Combine using sparse matrix operations: alpha * binary_sim + (1-alpha) * temporal_sim
     combined_sim = binary_sim.multiply(alpha) + temporal_sim.multiply(1-alpha)
