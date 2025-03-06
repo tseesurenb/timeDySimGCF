@@ -13,8 +13,6 @@ from utils import print_metrics, set_seed, plot_results
 import data_prep as dp 
 from world import config
 
-
-
 # STEP 1: Set the device
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Device: {device}")
@@ -24,14 +22,12 @@ res_dir = f"models/results"
 load_dir = f"models/params"
 plot_dir = f"models/plots"
 pred_dir = f"models/preds"
-
     
 os.makedirs(res_dir, exist_ok=True)
 os.makedirs(load_dir, exist_ok=True)
 os.makedirs(plot_dir, exist_ok=True)
 os.makedirs(pred_dir, exist_ok=True)
     
-
 # STEP 2: Load the data
 train_df, test_df = dp.load_data_from_adj_list(dataset = config['dataset'])
 

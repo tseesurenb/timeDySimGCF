@@ -352,6 +352,7 @@ def load_data_from_adj_list(dataset = "lastfm", verbose = 0):
     
     if config['time'] == 1:
         train_df = df[['user_id', 'item_id', 'timestamp']]
+        print('Time information is included in the dataset.')
     else:    
         train_df = df[['user_id', 'item_id']]
                             
